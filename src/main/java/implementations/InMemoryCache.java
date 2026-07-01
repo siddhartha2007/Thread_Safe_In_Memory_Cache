@@ -69,6 +69,7 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
     @Override
     public int size() {
         return cache.size();
+        // this is not accurate. we are removing entries lazily. there are high chances that the expired entries still exists in our cache map.
     }
 
     public void clear() {
