@@ -1,15 +1,18 @@
 package implementations;
 
 import cache.Cache;
+import metrics.CacheMetrics;
 import model.CacheEntry;
 
 import java.util.concurrent.ConcurrentHashMap;
 
 public class InMemoryCache<K,V> implements Cache<K,V> {
     private final ConcurrentHashMap<K, CacheEntry<V>> cache;
+    private final CacheMetrics metrics;
 
     public InMemoryCache(){
         this.cache=new ConcurrentHashMap<>();
+        this.metrics=new CacheMetrics();
     }
 
     @Override
@@ -26,12 +29,15 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
     public V get(K key) {
         CacheEntry<V> entry=cache.get(key);
         if(entry==null){
+            metrics.incrementMisses();
             return null;// returning null is industry standard
         }
         if(entry.isExpired()){
-            this.remove(key);
+            removeExpiredEntry(key);
+            metrics.incrementMisses();
             return null;
         }
+        metrics.incrementHits();
         entry.incrementAccessCount();
         entry.updateLastAccessTime();
         return entry.getValue();
@@ -57,7 +63,7 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
         }
 
         if(entry.isExpired()) {
-            this.remove(key);
+            removeExpiredEntry(key);
             return false;
         }
         return true;
@@ -68,8 +74,16 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
         return cache.size();
     }
 
-    @Override
     public void clear() {
         cache.clear();
     }
-}
+
+    private boolean removeExpiredEntry(K key){
+        boolean removed= cache.remove(key) !=null;
+        if(removed){
+            this.metrics.incrementExpiredEntries();
+        }
+        return removed;
+    }
+
+    }
