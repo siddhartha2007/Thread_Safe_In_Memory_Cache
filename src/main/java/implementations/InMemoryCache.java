@@ -33,7 +33,7 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
             return null;// returning null is industry standard
         }
         if(entry.isExpired()){
-            removeExpiredEntry(key);
+            removeExpiredEntry(key,entry);
             metrics.incrementMisses();
             return null;
         }
@@ -46,13 +46,10 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
     @Override
     public void remove(K key) {
 
-        CacheEntry<V> entry=cache.get(key);
-        if(entry==null) {
-            return;
+        CacheEntry<V> removedEntry=cache.remove(key);
+        if(removedEntry!=null) {
+            // future metrics logic
         }
-
-        // future metrics logic.
-        cache.remove(key);
     }
 
     @Override
@@ -63,7 +60,7 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
         }
 
         if(entry.isExpired()) {
-            removeExpiredEntry(key);
+            removeExpiredEntry(key,entry);
             return false;
         }
         return true;
@@ -78,12 +75,11 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
         cache.clear();
     }
 
-    private boolean removeExpiredEntry(K key){
-        boolean removed= cache.remove(key) !=null;
+    private boolean removeExpiredEntry(K key,CacheEntry<V> value){
+        boolean removed= cache.remove(key,value);
         if(removed){
             this.metrics.incrementExpiredEntries();
         }
         return removed;
     }
-
     }
