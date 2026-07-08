@@ -12,4 +12,6 @@ public interface EvictionPolicy<K> {
     void onRemove(K key);
 
     K evict();
+
+    void clear();
 }

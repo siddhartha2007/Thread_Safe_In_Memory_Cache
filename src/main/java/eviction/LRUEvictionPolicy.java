@@ -1,18 +1,49 @@
 package eviction;
 
 import java.util.HashMap;
+import java.util.Map;
+
 
 public class LRUEvictionPolicy<K> implements EvictionPolicy<K>{
 
+    public static class Node<K>{
+        private K key;
+        private Node<K> prev;
+        private Node<K> next;
 
-    private final HashMap<K,LRUNode<K>> map;
+        public Node(K key){
+            this.key=key;
+        }
 
-    private final  LRUNode<K> head;
-    private final LRUNode<K> tail;
+        public void setPrev(Node<K> prevnode){
+            prev=prevnode;
+        }
+
+        public void setNext(Node<K> nextnode){
+            next=nextnode;
+        }
+
+        public K getKey(){
+            return key;
+        }
+
+        public Node<K> getPrev() {
+            return prev;
+        }
+
+        public Node<K> getNext(){
+            return next;
+        }
+
+    }
+    private final Map<K, Node<K>> map;
+
+    private final Node<K> head;
+    private final Node<K> tail;
 
     public LRUEvictionPolicy(){
-        head=new LRUNode<>(null);
-        tail=new LRUNode<>(null);
+        head=new Node<>(null);
+        tail=new Node<>(null);
         head.setNext(tail);
         tail.setPrev(head);
         map=new HashMap<>();
@@ -21,7 +52,7 @@ public class LRUEvictionPolicy<K> implements EvictionPolicy<K>{
     @Override
     public synchronized  void  onInsert(K key) {
 
-        LRUNode<K> node=new LRUNode<>(key);
+        Node<K> node=new Node<>(key);
         addLast(node);
         map.put(key,node);
     }
@@ -29,7 +60,10 @@ public class LRUEvictionPolicy<K> implements EvictionPolicy<K>{
     @Override
     public synchronized  void onAccess(K key) {
 
-        LRUNode<K> node = map.get(key);
+        Node<K> node = map.get(key);
+        if(node==null){
+            return;
+        }
         if(node.getNext()==tail){
             return;
         }
@@ -37,11 +71,11 @@ public class LRUEvictionPolicy<K> implements EvictionPolicy<K>{
         addLast(node);
     }
 
-    private  void addLast(LRUNode<K> node) {
+    private  void addLast(Node<K> node) {
         node.setNext(null);
         node.setPrev(null);
 
-        LRUNode<K> tailprev=tail.getPrev();
+        Node<K> tailprev=tail.getPrev();
         tailprev.setNext(node);
         node.setPrev(tailprev);
         node.setNext(tail);
@@ -50,17 +84,19 @@ public class LRUEvictionPolicy<K> implements EvictionPolicy<K>{
 
     @Override
     public synchronized  void onRemove(K key) {
-        LRUNode<K> node=map.get(key);
-
+        Node<K> node=map.get(key);
+        if(node==null){
+            return ;
+        }
         removeNode(node);
         map.remove(key);
     }
 
-    private void removeNode(LRUNode<K> node) {
+    private void removeNode(Node<K> node) {
 
 
-        LRUNode<K> prevNode = node.getPrev();
-        LRUNode<K> nextNode = node.getNext();
+        Node<K> prevNode = node.getPrev();
+        Node<K> nextNode = node.getNext();
 
         prevNode.setNext(nextNode);
         nextNode.setPrev(prevNode);
@@ -73,11 +109,18 @@ public class LRUEvictionPolicy<K> implements EvictionPolicy<K>{
         return removeFirst();
     }
 
+    @Override
+    public synchronized  void clear() {
+        map.clear();
+        head.setNext(tail);
+        tail.setPrev(head);
+    }
+
     private K removeFirst() {
         if(head.getNext()==tail){
             return null;
         }else{
-            LRUNode<K> first = head.getNext();
+            Node<K> first = head.getNext();
 
             removeNode(first);
 
