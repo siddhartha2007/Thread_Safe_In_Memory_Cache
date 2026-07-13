@@ -12,6 +12,25 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 
+/**
+ * A thread-safe in-memory implementation of the {@link Cache} interface.
+ *
+ * <p>This implementation stores entries in a {@code ConcurrentHashMap}
+ * and supports:
+ * <ul>
+ *     <li>Time-to-live (TTL) expiration</li>
+ *     <li>Capacity-based eviction</li>
+ *     <li>Pluggable eviction policies</li>
+ *     <li>Background cleanup of expired entries</li>
+ * </ul>
+ *
+ * <p>Cache operations are coordinated using a {@code ReentrantLock}
+ * to ensure consistency between the cache storage and the configured
+ * eviction policy.
+ *
+ * @param <K> the type of cache keys
+ * @param <V> the type of cached values
+ */
 public class InMemoryCache<K,V> implements Cache<K,V> {
     private final Map<K, CacheEntry<V>> cache;
     private final CacheMetrics metrics;
@@ -42,6 +61,17 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
         }
     }
 
+    /**
+     * Creates a new in-memory cache.
+     *
+     * @param cleanupIntervalMillis interval between background cleanup runs
+     *                              in milliseconds
+     * @param capacity maximum number of entries the cache can hold
+     * @param evictionPolicy eviction strategy used when the cache reaches
+     *                       its capacity
+     * @throws IllegalArgumentException if capacity or cleanup interval is
+     *                                  non-positive
+     */
     public InMemoryCache(long cleanupIntervalMillis, int capacity,EvictionPolicy<K> evictionPolicy){
         if(cleanupIntervalMillis<=0 || capacity<=0){
             throw new IllegalArgumentException();
@@ -59,6 +89,9 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
         scheduler.scheduleWithFixedDelay(cleanUpTask,cleanupIntervalMillis, cleanupIntervalMillis, TimeUnit.MILLISECONDS);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void put(K key, V value) {
 
@@ -66,9 +99,9 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
         try {
 
             CacheEntry<V> existing = cache.get(key);
-            if(existing!=null){
+            if (existing != null) {
                 evictionPolicy.onAccess(key);
-            }else {
+            } else {
                 if (cache.size() >= capacity) {
                     K victim = evictionPolicy.evict();
                     if (victim != null) {
@@ -85,6 +118,9 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
 
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void put(K key, V value, long ttlMillis) {
         cacheLock.lock();
@@ -109,6 +145,9 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
         }
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public V get(K key) {
         CacheEntry<V> entry= cache.get(key);
@@ -128,6 +167,9 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
         return entry.getValue();
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void remove(K key) {
 
@@ -143,6 +185,9 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
         }
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public boolean containsKey(K key) {
         CacheEntry<V> entry= cache.get(key);
@@ -157,11 +202,17 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
         return true;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public int size() {
         return cache.size();
     }
 
+    /**
+     * {@inheritDoc}
+     */
     public void clear() {
         cacheLock.lock();
         try {
@@ -187,6 +238,12 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
         }
     }
 
+    /**
+     * Gracefully shuts down the background cleanup task.
+     *
+     * <p>After shutdown, no further cleanup tasks are scheduled.
+     * Existing cache entries remain accessible.
+     */
     public void shutdown(){
         scheduler.shutdown();
         try{

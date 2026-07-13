@@ -1,7 +1,14 @@
 package model;
 
 import java.util.concurrent.atomic.LongAdder;
-
+/**
+ * Represents a single cache entry stored in the cache.
+ *
+ * <p>Each entry stores the cached value along with metadata used for
+ * expiration and access statistics.
+ *
+ * @param <V> the type of the cached value
+ */
 public class CacheEntry<V>{
     private final long expiryTime;
 
@@ -26,7 +33,11 @@ public class CacheEntry<V>{
     }
 
 
-
+    /**
+     * Determines whether this cache entry has expired.
+     *
+     * @return {@code true} if the entry has expired; {@code false} otherwise
+     */
     public boolean isExpired(){
         return System.currentTimeMillis()>expiryTime;
     }

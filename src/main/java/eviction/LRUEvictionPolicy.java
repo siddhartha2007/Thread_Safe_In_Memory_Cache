@@ -3,9 +3,25 @@ package eviction;
 import java.util.HashMap;
 import java.util.Map;
 
-
+/**
+ * An implementation of the Least Recently Used (LRU) eviction policy.
+ *
+ * <p>This policy evicts the entry that has not been accessed for the
+ * longest period of time.
+ *
+ * <p>The implementation maintains access order using a doubly linked
+ * list and provides constant-time insertion, removal, access updates,
+ * and eviction by combining the list with a hash map.
+ *
+ * <p>This implementation is thread-safe.
+ *
+ * @param <K> the type of cache keys
+ */
 public class LRUEvictionPolicy<K> implements EvictionPolicy<K>{
 
+    /**
+     * Node used by the internal doubly linked list.
+     */
     public static class Node<K>{
         private K key;
         private Node<K> prev;
@@ -49,6 +65,9 @@ public class LRUEvictionPolicy<K> implements EvictionPolicy<K>{
         map=new HashMap<>();
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public synchronized  void  onInsert(K key) {
 
@@ -57,6 +76,9 @@ public class LRUEvictionPolicy<K> implements EvictionPolicy<K>{
         map.put(key,node);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public synchronized  void onAccess(K key) {
 
@@ -82,6 +104,9 @@ public class LRUEvictionPolicy<K> implements EvictionPolicy<K>{
         tail.setPrev(node);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public synchronized  void onRemove(K key) {
         Node<K> node=map.get(key);
@@ -104,11 +129,17 @@ public class LRUEvictionPolicy<K> implements EvictionPolicy<K>{
         node.setNext(null);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public synchronized  K evict() {
         return removeFirst();
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public synchronized  void clear() {
         map.clear();

@@ -1,7 +1,14 @@
 package metrics;
 
 import java.util.concurrent.atomic.LongAdder;
-
+/**
+ * Collects runtime statistics about cache operations.
+ *
+ * <p>The metrics include cache hits, cache misses, evictions,
+ * and expired entry removals.
+ *
+ * <p>This class is thread-safe.
+ */
 public class CacheMetrics {
     private final LongAdder cacheHits;
     private final LongAdder cacheMisses;
@@ -15,6 +22,9 @@ public class CacheMetrics {
         this.expiredEntries = new LongAdder();
     }
 
+    /**
+     * Increments the cache hit count.
+     */
     public void incrementHits(){
         this.cacheHits.increment();
     }
@@ -32,10 +42,13 @@ public class CacheMetrics {
     }
 
     // getters
-
+    /**
+     * Returns the total number of cache hits.
+     */
     public long getCacheHits(){
         return this.cacheHits.sum();
     }
+
 
     public long getCacheMisses(){
         return this.cacheMisses.sum();
