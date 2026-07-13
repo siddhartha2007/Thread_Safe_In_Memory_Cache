@@ -5,6 +5,11 @@ A lightweight, generic, thread-safe in-memory cache library written in Java.
 The project was built to explore concurrent programming, cache eviction strategies, clean API design, and extensible software architecture. It provides configurable TTL expiration, pluggable eviction policies, automatic cleanup of expired entries, and runtime cache metrics.
 
 ---
+## Why this project?
+
+Caching is a fundamental technique in backend systems for improving responsiveness by avoiding repeated access to expensive resources such as databases, file systems, or external services.
+
+Instead of relying on an existing caching library, I built this project from scratch to better understand the data structures, concurrency mechanisms, and architectural decisions involved in designing a thread-safe in-memory cache.
 
 ## Features
 
