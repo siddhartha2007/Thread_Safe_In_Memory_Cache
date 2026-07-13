@@ -20,20 +20,33 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
     private final int capacity;
     private final EvictionPolicy<K> evictionPolicy;
     private final ReentrantLock cacheLock = new ReentrantLock();
+
+    private static final long DEFAULT_CLEANUP_INTERVAL=20_000;
+    private static final int DEFAULT_CAPACITY=100;
     public InMemoryCache(EvictionPolicy<K> evictionPolicy){
-        this(20000,100,evictionPolicy);
+        this(DEFAULT_CLEANUP_INTERVAL,DEFAULT_CAPACITY,evictionPolicy);
     }
 
 
     public InMemoryCache(long cleanupIntervalMillis,EvictionPolicy<K> evictionPolicy) {
-        this(cleanupIntervalMillis,100,evictionPolicy);
+        this(cleanupIntervalMillis,DEFAULT_CAPACITY,evictionPolicy);
+        if(cleanupIntervalMillis<=0){
+            throw new IllegalArgumentException();
+        }
     }
 
     public InMemoryCache(int capacity,EvictionPolicy<K> evictionPolicy) {
-        this(20000,capacity,evictionPolicy);
+        this(DEFAULT_CLEANUP_INTERVAL,capacity,evictionPolicy);
+        if(capacity<=0){
+            throw new IllegalArgumentException();
+        }
     }
 
     public InMemoryCache(long cleanupIntervalMillis, int capacity,EvictionPolicy<K> evictionPolicy){
+        if(cleanupIntervalMillis<=0 || capacity<=0){
+            throw new IllegalArgumentException();
+        }
+
         cache =new ConcurrentHashMap<>();
         metrics=new CacheMetrics();
         scheduler = Executors.newSingleThreadScheduledExecutor();
@@ -51,17 +64,18 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
 
         cacheLock.lock();
         try {
-            if (cache.size() >= capacity) {
-                K victim = evictionPolicy.evict();
-                if (victim != null) {
-                    remove(victim);
-                    metrics.incrementEvictions();
-                }
-            }
+
             CacheEntry<V> existing = cache.get(key);
             if(existing!=null){
                 evictionPolicy.onAccess(key);
             }else {
+                if (cache.size() >= capacity) {
+                    K victim = evictionPolicy.evict();
+                    if (victim != null) {
+                        remove(victim);
+                        metrics.incrementEvictions();
+                    }
+                }
                 evictionPolicy.onInsert(key);
             }
             cache.put(key, new CacheEntry<>(value));
@@ -75,17 +89,18 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
     public void put(K key, V value, long ttlMillis) {
         cacheLock.lock();
         try {
-            if (cache.size() >= capacity) {
-                K victim = evictionPolicy.evict();
-                if (victim != null) {
-                    remove(victim);
-                    metrics.incrementEvictions();
-                }
-            }
+
             CacheEntry<V> existing = cache.get(key);
             if(existing!=null){
                 evictionPolicy.onAccess(key);
             }else {
+                if (cache.size() >= capacity) {
+                    K victim = evictionPolicy.evict();
+                    if (victim != null) {
+                        remove(victim);
+                        metrics.incrementEvictions();
+                    }
+                }
                 evictionPolicy.onInsert(key);
             }
             cache.put(key, new CacheEntry<>(value,ttlMillis));
@@ -158,7 +173,7 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
     }
 
     private boolean removeExpiredEntry(K key,CacheEntry<V> value){
-        Boolean removed =false;
+        boolean removed =false;
         cacheLock.lock();
         try {
             removed = cache.remove(key, value);
@@ -166,9 +181,9 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
                 evictionPolicy.onRemove(key);
                 this.metrics.incrementExpiredEntries();
             }
+            return removed;
         } finally {
             cacheLock.unlock();
-            return removed;
         }
     }
 
@@ -185,7 +200,7 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
     }
 
 
-    public void removeExpiredEntries(){
+    private void removeExpiredEntries(){
         try{
             for(Map.Entry<K,CacheEntry<V>> cache: cache.entrySet()){
                 CacheEntry<V> cacheEntry= cache.getValue();
