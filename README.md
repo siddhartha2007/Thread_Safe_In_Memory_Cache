@@ -264,6 +264,16 @@ This follows the Open/Closed Principle.
 Least Recently Used (LRU) is one of the most widely adopted cache eviction algorithms because recently accessed entries are statistically more likely to be accessed again.
 
 ---
+## Known Limitations
+
+Version 1.0.0 focuses on providing a clean, thread-safe in-memory cache for a single JVM.
+
+Current limitations include:
+
+- Designed for a single JVM; distributed caching is out of scope.
+- Does not persist cache contents across application restarts.
+- Uses a dedicated cleanup scheduler per cache instance; Version 2 will introduce a shared scheduler.
+- The project prioritizes simplicity and extensibility over advanced lock-free concurrency techniques.
 
 # Future Roadmap
 
