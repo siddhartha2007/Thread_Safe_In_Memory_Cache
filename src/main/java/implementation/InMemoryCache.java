@@ -52,9 +52,6 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
 
     public InMemoryCache(long cleanupIntervalMillis,EvictionPolicy<K> evictionPolicy) {
         this(cleanupIntervalMillis,DEFAULT_CAPACITY,evictionPolicy);
-        if(cleanupIntervalMillis<=0){
-            throw new IllegalArgumentException();
-        }
     }
 
     public InMemoryCache(int capacity,EvictionPolicy<K> evictionPolicy) {

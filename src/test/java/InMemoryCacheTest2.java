@@ -1,3 +1,4 @@
+import eviction.EvictionPolicy;
 import eviction.LRUEvictionPolicy;
 import exceptions.InvalidTtlException;
 import implementation.InMemoryCache;
@@ -26,7 +27,7 @@ public class InMemoryCacheTest2 {
 
 
     @Mock
-    LRUEvictionPolicy<Integer> evictionPolicy;
+    EvictionPolicy<Integer> evictionPolicy;
 
     @AfterEach
     void destroy(){
@@ -48,9 +49,9 @@ public class InMemoryCacheTest2 {
     @ValueSource(longs  = {-10000,-5000,0})
     void shouldThrowIllegalArgumentExceptionWhenNonPositiveCleanUpIntervalPassed(long cleanUpIntervalMillis){
         assertThrows(IllegalArgumentException.class,()->new InMemoryCache<>(cleanUpIntervalMillis,2,evictionPolicy));
-        assertThat(inMemoryCache).isNull();
     }
 
+    @Test
     void shouldThrowIllegalArgumentExceptionWhenNullPassedAsEvictionPolicy(){
         assertThrows(IllegalArgumentException.class,()->new InMemoryCache<>(1000,10,null));
     }
@@ -64,9 +65,6 @@ public class InMemoryCacheTest2 {
         assertThat(inMemoryCache).isNotNull();
     }
 
-
-//    Testing put(Key,Value) method
-// three branches - input  existing key, input new key and size()<capacity, input new key and size()>=capacity
 
     @Test
 void shouldCallOnInsertWhenNewEntryPassedToCache(){
@@ -319,8 +317,6 @@ void shouldEvictVictimWhenNewEntryIsInsertedAtCapacity(){
         inMemoryCache=new InMemoryCache<>(1000000,3,evictionPolicy);
         inMemoryCache.put(1,"Siddhartha",1000);
         Thread.sleep(1000);
-//        CacheStats stats=inMemoryCache.getStats();
-//        assertThat(stats.expiredentries()).isEqualTo(1);
         assertThat(inMemoryCache.containsKey(1)).isFalse();
     }
 
@@ -390,7 +386,7 @@ void shouldEvictVictimWhenNewEntryIsInsertedAtCapacity(){
         inMemoryCache.shutdown();
         assertThat(inMemoryCache.isShutDown()).isTrue();
     }
-    // shutdown should stop background cleanup and no public api should work.
+
     @Test
     void shouldRejectPutAfterShutDown(){
         inMemoryCache=new InMemoryCache<>(10000,10,evictionPolicy);
@@ -432,10 +428,10 @@ void shouldEvictVictimWhenNewEntryIsInsertedAtCapacity(){
     void shouldStopBackgroundCleanUpAfterstopCleanUpScheduler() throws InterruptedException{
         inMemoryCache=new InMemoryCache<>(10000,10,evictionPolicy);
         for(int i=0;i<10;i++){
-            inMemoryCache.put(i,"Siddhartha - "+i,1000);
+            inMemoryCache.put(i,"Siddhartha - "+i,30);
         }
         inMemoryCache.stopCleanupScheduler();
-        Thread.sleep(2000);
+        Thread.sleep(300);
         assertThat(inMemoryCache.size()).isEqualTo(10);
     }
     @Test
@@ -495,11 +491,4 @@ void shouldEvictVictimWhenNewEntryIsInsertedAtCapacity(){
          InvalidTtlException invalidTtlException=  assertThrows(InvalidTtlException.class,()->inMemoryCache.put(1,"Siddhartha",0));
          assertThat(invalidTtlException.getMessage()).isEqualTo("TtlMillis cannot be Negative or Zero");
     }
-
-
-
-
-
-
-
 }
