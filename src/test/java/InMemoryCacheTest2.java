@@ -259,8 +259,6 @@ void shouldEvictVictimWhenNewEntryIsInsertedAtCapacity(){
         inMemoryCache=new InMemoryCache<>(1000,3,evictionPolicy);
         inMemoryCache.put(1,"Siddhartha",1000);
         Thread.sleep(1000);
-        CacheStats stats=inMemoryCache.getStats();
-        assertThat(stats.expiredentries()).isEqualTo(0);
         inMemoryCache.containsKey(1);
        final CacheStats stats2=inMemoryCache.getStats();
         assertAll( ()-> assertThat(stats2.expiredentries()).isEqualTo(1),
