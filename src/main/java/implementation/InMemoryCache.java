@@ -41,7 +41,7 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
     private final int capacity;
     private final EvictionPolicy<K> evictionPolicy;
     private final ReentrantLock cacheLock = new ReentrantLock();
-    private final AtomicBoolean SHUTDOWN=new AtomicBoolean(false);
+    private final AtomicBoolean shutdown =new AtomicBoolean(false);
 
     private static final long DEFAULT_CLEANUP_INTERVAL=20_000;
     private static final int DEFAULT_CAPACITY=100;
@@ -73,10 +73,16 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
      *                                  non-positive
      */
     public InMemoryCache(long cleanupIntervalMillis, int capacity,EvictionPolicy<K> evictionPolicy){
-        if(cleanupIntervalMillis<=0 || capacity<=0){
-            throw new IllegalArgumentException();
+        if(evictionPolicy==null){
+            throw new IllegalArgumentException("Eviction Policy Cannot be Null");
         }
 
+        if(capacity<=0){
+            throw new IllegalArgumentException("Capacity Cannot be Non Positive");
+        }
+        if(cleanupIntervalMillis<=0){
+            throw new IllegalArgumentException("Clean Up Interval Cannot be Non Positive");
+        }
         cache =new ConcurrentHashMap<>();
         metrics=new CacheMetrics();
         scheduler = Executors.newSingleThreadScheduledExecutor();
@@ -259,8 +265,8 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
     }
 
     public void shutdown(){
+        shutdown.set(true);
         stopCleanupScheduler();
-        SHUTDOWN.set(true);
     }
 
 
@@ -279,7 +285,7 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
     }
 
     public boolean isShutDown(){
-        return SHUTDOWN.get();
+        return shutdown.get();
     }
 
     public CacheStats getStats(){
@@ -287,7 +293,7 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
     }
 
     private void ensureOpen(){
-        if(SHUTDOWN.get()){
+        if(shutdown.get()){
             throw  new IllegalStateException("Cache has been shut down.");
         }
     }

@@ -1,4 +1,5 @@
 import eviction.LRUEvictionPolicy;
+import exceptions.InvalidTtlException;
 import implementation.InMemoryCache;
 import metrics.CacheStats;
 import model.CacheEntry;
@@ -50,6 +51,10 @@ public class InMemoryCacheTest2 {
         assertThat(inMemoryCache).isNull();
     }
 
+    void shouldThrowIllegalArgumentExceptionWhenNullPassedAsEvictionPolicy(){
+        assertThrows(IllegalArgumentException.class,()->new InMemoryCache<>(1000,10,null));
+    }
+
     @ParameterizedTest
     @CsvSource({"10000,100",
             "20000,120",
@@ -72,6 +77,82 @@ void shouldCallOnInsertWhenNewEntryPassedToCache(){
         verify(evictionPolicy,never()).evict();
         assertThat(inMemoryCache.get(1)).isEqualTo("Siddhartha");
         verify(evictionPolicy,times(1)).onAccess(eq(1));
+}
+
+
+@Test
+void shouldIncrementEvictionMetricsWhenEntryEvictedAtCapacity(){
+        evictionPolicy=spy(new LRUEvictionPolicy<>());
+        inMemoryCache=new InMemoryCache<>(100,1,evictionPolicy);
+        inMemoryCache.put(1,"Siddhartha");
+        CacheStats stats=inMemoryCache.getStats();
+    assertAll( ()-> assertThat(stats.expiredentries()).isEqualTo(0),
+            ()->assertThat(stats.misses()).isEqualTo(0),
+            ()->assertThat(stats.hits()).isEqualTo(0),
+            ()->  assertThat(stats.evictions()).isEqualTo(0));
+    inMemoryCache.put(2,"Siddhartha");
+    verify(evictionPolicy).evict();
+    CacheStats stats2=inMemoryCache.getStats();
+    assertAll( ()-> assertThat(stats2.expiredentries()).isEqualTo(0),
+            ()->assertThat(stats2.misses()).isEqualTo(0),
+            ()->assertThat(stats2.hits()).isEqualTo(0),
+            ()->  assertThat(stats2.evictions()).isEqualTo(1));
+
+}
+
+@Test
+void shouldIncrementHitMetricsWhenEntrySuccessullyAccessed(){
+        inMemoryCache=new InMemoryCache<>(1000,10,evictionPolicy);
+        inMemoryCache.put(1,"Siddhartha");
+    CacheStats stats=inMemoryCache.getStats();
+    assertAll( ()-> assertThat(stats.expiredentries()).isEqualTo(0),
+            ()->assertThat(stats.misses()).isEqualTo(0),
+            ()->assertThat(stats.hits()).isEqualTo(0),
+            ()->  assertThat(stats.evictions()).isEqualTo(0));
+
+    String s = inMemoryCache.get(1);
+    CacheStats stats2=inMemoryCache.getStats();
+    assertAll( ()-> assertThat(stats2.expiredentries()).isEqualTo(0),
+            ()->assertThat(stats2.misses()).isEqualTo(0),
+            ()->assertThat(stats2.hits()).isEqualTo(1),
+            ()->  assertThat(stats2.evictions()).isEqualTo(0));
+
+}
+
+@Test
+void shouldIncrementMissesWhenNon_ExistingEntryAccessed() {
+    inMemoryCache = new InMemoryCache<>(1000, 100, evictionPolicy);
+    CacheStats stats=inMemoryCache.getStats();
+    assertAll( ()-> assertThat(stats.expiredentries()).isEqualTo(0),
+            ()->assertThat(stats.misses()).isEqualTo(0),
+            ()->assertThat(stats.hits()).isEqualTo(0),
+            ()->  assertThat(stats.evictions()).isEqualTo(0));
+    inMemoryCache.get(1);
+    CacheStats stats2=inMemoryCache.getStats();
+    assertAll( ()-> assertThat(stats2.expiredentries()).isEqualTo(0),
+            ()->assertThat(stats2.misses()).isEqualTo(1),
+            ()->assertThat(stats2.hits()).isEqualTo(0),
+            ()->  assertThat(stats2.evictions()).isEqualTo(0));
+
+}
+
+@Test
+void shouldIncrementMissesAndExpiredEntriesWhenExpiredEntryAccessed() throws InterruptedException{
+        inMemoryCache=new InMemoryCache<>(100,10,evictionPolicy);
+        inMemoryCache.put(1,"Siddhartha",1000);
+    CacheStats stats=inMemoryCache.getStats();
+    assertAll( ()-> assertThat(stats.expiredentries()).isEqualTo(0),
+            ()->assertThat(stats.misses()).isEqualTo(0),
+            ()->assertThat(stats.hits()).isEqualTo(0),
+            ()->  assertThat(stats.evictions()).isEqualTo(0));
+        Thread.sleep(1000);
+        inMemoryCache.get(1);
+    CacheStats stats2=inMemoryCache.getStats();
+    assertAll( ()-> assertThat(stats2.expiredentries()).isEqualTo(1),
+            ()->assertThat(stats2.misses()).isEqualTo(1),
+            ()->assertThat(stats2.hits()).isEqualTo(0),
+            ()->  assertThat(stats2.evictions()).isEqualTo(0));
+
 }
 
 @Test
@@ -143,7 +224,7 @@ void shouldEvictVictimWhenNewEntryIsInsertedAtCapacity(){
 }
 
 @Test
-    void shouldUpdateHitsWhenExisitingEntryAccessed(){
+    void shouldIncrementHitCountWhenExistingEntryIsAccessed(){
         inMemoryCache=new InMemoryCache<>(1000,50,evictionPolicy);
         CacheStats stats=inMemoryCache.getStats();
         assertThat(stats.hits()).isEqualTo(0);
@@ -243,7 +324,6 @@ void shouldEvictVictimWhenNewEntryIsInsertedAtCapacity(){
         assertThat(inMemoryCache.containsKey(1)).isFalse();
     }
 
-
     @Test
     void shouldUpdateEvictionPolicyWhenExpiredEntryisChecked() throws InterruptedException{
         inMemoryCache=new InMemoryCache<>(1000,3,evictionPolicy);
@@ -267,7 +347,6 @@ void shouldEvictVictimWhenNewEntryIsInsertedAtCapacity(){
                 ()->  assertThat(stats2.evictions()).isEqualTo(0));
     }
 
-
     @Test
     void shouldReturnExactSizeOfCache(){
         inMemoryCache=new InMemoryCache<>(10000,10,evictionPolicy);
@@ -280,7 +359,6 @@ void shouldEvictVictimWhenNewEntryIsInsertedAtCapacity(){
         }
         assertThat(inMemoryCache.size()).isEqualTo(10);
     }
-
     @Test
     void shouldClearContentsOfCacheWhenClearCalled(){
         inMemoryCache=new InMemoryCache<>(10000,10,evictionPolicy);
@@ -291,7 +369,6 @@ void shouldEvictVictimWhenNewEntryIsInsertedAtCapacity(){
         inMemoryCache.clear();
         assertThat(inMemoryCache.size()).isEqualTo(0);
     }
-
     @Test
     void shouldNotifyEvictionPolicyWhenClearCalled(){
         inMemoryCache=new InMemoryCache<>(10000,10,evictionPolicy);
@@ -302,6 +379,126 @@ void shouldEvictVictimWhenNewEntryIsInsertedAtCapacity(){
         inMemoryCache.clear();
         verify(evictionPolicy,times(1)).clear();
     }
+    @Test
+    void shouldReturnFalseWhenShutDownNotDone(){
+        inMemoryCache=new InMemoryCache<>(10000,10,evictionPolicy);
+        assertThat(inMemoryCache.isShutDown()).isFalse();
+    }
+    @Test
+    void shouldReturnTrueWhenShutDownDone(){
+        inMemoryCache=new InMemoryCache<>(10000,10,evictionPolicy);
+        inMemoryCache.shutdown();
+        assertThat(inMemoryCache.isShutDown()).isTrue();
+    }
+    // shutdown should stop background cleanup and no public api should work.
+    @Test
+    void shouldRejectPutAfterShutDown(){
+        inMemoryCache=new InMemoryCache<>(10000,10,evictionPolicy);
+        inMemoryCache.shutdown();
+        assertThrows(IllegalStateException.class,()-> inMemoryCache.put(1,"Siddhartha"));
+        assertThrows(IllegalStateException.class,()->inMemoryCache.put(2,"Siddhartha",2000));
+    }
+    @Test
+    void shouldRejectGetAfterShutDown(){
+        inMemoryCache=new InMemoryCache<>(10000,10,evictionPolicy);
+        inMemoryCache.shutdown();
+        assertThrows(IllegalStateException.class,()-> inMemoryCache.get(1));
+    }
+    @Test
+    void shouldRejectRemoveAfterShutDown(){
+        inMemoryCache=new InMemoryCache<>(1000,10,evictionPolicy);
+        inMemoryCache.shutdown();
+        assertThrows(IllegalStateException.class,()->inMemoryCache.remove(1));
+    }
+    @Test
+    void shouldRejectContainsKeyAfterShutDown(){
+        inMemoryCache=new InMemoryCache<>(100000,10,evictionPolicy);
+        inMemoryCache.shutdown();
+        assertThrows(IllegalStateException.class,()-> inMemoryCache.containsKey(1));
+    }
+    @Test
+    void shouldRejectSizeAfterShutDown(){
+        inMemoryCache=new InMemoryCache<>(1000,10,evictionPolicy);
+        inMemoryCache.shutdown();
+        assertThrows(IllegalStateException.class,()->inMemoryCache.size());
+    }
+    @Test
+    void shouldRejectClearAfterShutDown(){
+        inMemoryCache=new InMemoryCache<>(1000,10,evictionPolicy);
+        inMemoryCache.shutdown();
+        assertThrows(IllegalStateException.class,()->inMemoryCache.clear());
+    }
+    @Test
+    void shouldStopBackgroundCleanUpAfterstopCleanUpScheduler() throws InterruptedException{
+        inMemoryCache=new InMemoryCache<>(10000,10,evictionPolicy);
+        for(int i=0;i<10;i++){
+            inMemoryCache.put(i,"Siddhartha - "+i,1000);
+        }
+        inMemoryCache.stopCleanupScheduler();
+        Thread.sleep(2000);
+        assertThat(inMemoryCache.size()).isEqualTo(10);
+    }
+    @Test
+    void shouldAllowShutdownToBeCalledMultipleTimes() {
+    inMemoryCache=new InMemoryCache<>(1000,10,evictionPolicy);
+    inMemoryCache.shutdown();
+    inMemoryCache.shutdown();
+    inMemoryCache.shutdown();
+    }
+    @Test
+    void shouldAllowStoppingCleanupSchedulerMultipleTimes() {
+        inMemoryCache=new InMemoryCache<>(1000,10,evictionPolicy);
+        inMemoryCache.stopCleanupScheduler();
+        inMemoryCache.stopCleanupScheduler();
+        inMemoryCache.stopCleanupScheduler();
+    }
+    @Test
+    void shouldAllowClearingMultipleTimes(){
+        inMemoryCache=new InMemoryCache<>(1000,10,evictionPolicy);
+        inMemoryCache.clear();
+        inMemoryCache.clear();
+    }
+    @Test
+    void shouldAllowCallingStopCleanUpSchedulerAfterShutDown(){
+        inMemoryCache=new InMemoryCache<>(1000,10,evictionPolicy);
+        inMemoryCache.shutdown();
+        inMemoryCache.stopCleanupScheduler();
+    }
+    @Test
+    void shouldAllowCallingShutDownAfterStoppingBackGroundCleanUp(){
+        inMemoryCache=new InMemoryCache<>(1000,10,evictionPolicy);
+        inMemoryCache.stopCleanupScheduler();
+        inMemoryCache.shutdown();
+    }
+    @Test
+    void shouldAllowRemovingNonExistingKeys(){
+        inMemoryCache=new InMemoryCache<>(1000,10,evictionPolicy);
+        inMemoryCache.remove(1);
+        inMemoryCache.remove(2);
+    }
+
+    @Test
+    void shouldNullPointerExceptionWhenKeyisNullWhenPutting(){
+        inMemoryCache=new InMemoryCache<>(100,100,evictionPolicy);
+        assertThrows(NullPointerException.class,()->inMemoryCache.put(null,"Siddhartha"));
+    }
+
+    @Test
+    void shouldThrowIllegalArgumentExceptionWhenValueIsNullWhilePutting(){
+        inMemoryCache=new InMemoryCache<>(100,1000,evictionPolicy);
+        assertThrows(IllegalArgumentException.class,()-> inMemoryCache.put(1,null));
+    }
+
+    @Test
+    void shouldThrowInvalidTtlExceptionWhenNegativeTtlPassed(){
+        inMemoryCache=new InMemoryCache<>(100,1000,evictionPolicy);
+         InvalidTtlException invalidTtlException=  assertThrows(InvalidTtlException.class,()->inMemoryCache.put(1,"Siddhartha",0));
+         assertThat(invalidTtlException.getMessage()).isEqualTo("TtlMillis cannot be Negative or Zero");
+    }
+
+
+
+
 
 
 

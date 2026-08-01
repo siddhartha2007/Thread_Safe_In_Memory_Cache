@@ -21,6 +21,9 @@ public class CacheEntry<V>{
     private volatile  long lastAccessTime;
 
     public CacheEntry(V value,long ttlMillis){
+        if(value==null){
+            throw new IllegalArgumentException();
+        }
         if(ttlMillis<=0){
             throw new InvalidTtlException("TtlMillis cannot be Negative or Zero");
         }
@@ -31,6 +34,9 @@ public class CacheEntry<V>{
     }
 
     public CacheEntry(V value){
+        if(value==null){
+            throw new IllegalArgumentException();
+        }
         this.value=value;
         this.expiryTime=Long.MAX_VALUE;
         this.accessCount=new LongAdder();
