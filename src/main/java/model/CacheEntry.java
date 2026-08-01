@@ -22,7 +22,7 @@ public class CacheEntry<V>{
 
     public CacheEntry(V value,long ttlMillis){
         if(value==null){
-            throw new IllegalArgumentException();
+            throw new IllegalArgumentException("Value cannot be null");
         }
         if(ttlMillis<=0){
             throw new InvalidTtlException("TtlMillis cannot be Negative or Zero");
@@ -35,7 +35,7 @@ public class CacheEntry<V>{
 
     public CacheEntry(V value){
         if(value==null){
-            throw new IllegalArgumentException();
+            throw new IllegalArgumentException("Value cannot be null");
         }
         this.value=value;
         this.expiryTime=Long.MAX_VALUE;
