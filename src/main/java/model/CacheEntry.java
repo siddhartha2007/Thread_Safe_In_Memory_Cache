@@ -1,5 +1,7 @@
 package model;
 
+import exceptions.InvalidTtlException;
+
 import java.util.concurrent.atomic.LongAdder;
 /**
  * Represents a single cache entry stored in the cache.
@@ -19,6 +21,9 @@ public class CacheEntry<V>{
     private volatile  long lastAccessTime;
 
     public CacheEntry(V value,long ttlMillis){
+        if(ttlMillis<=0){
+            throw new InvalidTtlException("TtlMillis cannot be Negative or Zero");
+        }
         this.value=value;
         this.expiryTime=System.currentTimeMillis()+ttlMillis;
         this.accessCount=new LongAdder();

@@ -69,7 +69,7 @@ public class LRUEvictionPolicy<K> implements EvictionPolicy<K>{
      * {@inheritDoc}
      */
     @Override
-    public synchronized  void  onInsert(K key) {
+    public synchronized  void  onInsert(K key) throws  RuntimeException {
 
         Node<K> node=new Node<>(key);
         addLast(node);

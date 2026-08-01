@@ -3,6 +3,7 @@ package implementation;
 import cache.Cache;
 import eviction.EvictionPolicy;
 import metrics.CacheMetrics;
+import metrics.CacheStats;
 import model.CacheEntry;
 
 import java.util.Map;
@@ -10,6 +11,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -39,6 +41,7 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
     private final int capacity;
     private final EvictionPolicy<K> evictionPolicy;
     private final ReentrantLock cacheLock = new ReentrantLock();
+    private final AtomicBoolean SHUTDOWN=new AtomicBoolean(false);
 
     private static final long DEFAULT_CLEANUP_INTERVAL=20_000;
     private static final int DEFAULT_CAPACITY=100;
@@ -56,9 +59,6 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
 
     public InMemoryCache(int capacity,EvictionPolicy<K> evictionPolicy) {
         this(DEFAULT_CLEANUP_INTERVAL,capacity,evictionPolicy);
-        if(capacity<=0){
-            throw new IllegalArgumentException();
-        }
     }
 
     /**
@@ -94,10 +94,9 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
      */
     @Override
     public void put(K key, V value) {
-
+        ensureOpen();
         cacheLock.lock();
         try {
-
             CacheEntry<V> existing = cache.get(key);
             if (existing != null) {
                 evictionPolicy.onAccess(key);
@@ -115,14 +114,13 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
         } finally {
             cacheLock.unlock();
         }
-
     }
-
     /**
      * {@inheritDoc}
      */
     @Override
     public void put(K key, V value, long ttlMillis) {
+        ensureOpen();
         cacheLock.lock();
         try {
 
@@ -150,6 +148,7 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
      */
     @Override
     public V get(K key) {
+        ensureOpen();
         CacheEntry<V> entry= cache.get(key);
         if(entry==null){
             metrics.incrementMisses();
@@ -172,7 +171,7 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
      */
     @Override
     public void remove(K key) {
-
+        ensureOpen();
         cacheLock.lock();
         try {
             CacheEntry<V> removedEntry = cache.remove(key);
@@ -190,6 +189,7 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
      */
     @Override
     public boolean containsKey(K key) {
+        ensureOpen();
         CacheEntry<V> entry= cache.get(key);
         if(entry==null){
             return false;
@@ -207,6 +207,7 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
      */
     @Override
     public int size() {
+        ensureOpen();
         return cache.size();
     }
 
@@ -214,6 +215,7 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
      * {@inheritDoc}
      */
     public void clear() {
+        ensureOpen();
         cacheLock.lock();
         try {
             evictionPolicy.clear();
@@ -244,7 +246,7 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
      * <p>After shutdown, no further cleanup tasks are scheduled.
      * Existing cache entries remain accessible.
      */
-    public void shutdown(){
+    public void stopCleanupScheduler(){
         scheduler.shutdown();
         try{
             if(!scheduler.awaitTermination(10,TimeUnit.SECONDS)){
@@ -254,6 +256,11 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
             scheduler.shutdownNow();
             Thread.currentThread().interrupt();
         }
+    }
+
+    public void shutdown(){
+        stopCleanupScheduler();
+        SHUTDOWN.set(true);
     }
 
 
@@ -268,6 +275,20 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
         }catch (Exception e){
             e.printStackTrace();
             // logging will be implemented in the future
+        }
+    }
+
+    public boolean isShutDown(){
+        return SHUTDOWN.get();
+    }
+
+    public CacheStats getStats(){
+        return new CacheStats(metrics.getCacheHits(),metrics.getCacheMisses(),metrics.getCacheEvictions(),metrics.getExpiredEntries());
+    }
+
+    private void ensureOpen(){
+        if(SHUTDOWN.get()){
+            throw  new IllegalStateException("Cache has been shut down.");
         }
     }
 }
