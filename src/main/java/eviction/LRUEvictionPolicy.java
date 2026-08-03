@@ -69,8 +69,12 @@ public class LRUEvictionPolicy<K> implements EvictionPolicy<K>{
      * {@inheritDoc}
      */
     @Override
-    public synchronized  void  onInsert(K key) throws  RuntimeException {
-
+    public synchronized  void  onInsert(K key) {
+        if(map.containsKey(key)){
+            throw new IllegalStateException(
+                    "Duplicate key inserted into eviction policy."
+            );
+        }
         Node<K> node=new Node<>(key);
         addLast(node);
         map.put(key,node);
@@ -81,7 +85,9 @@ public class LRUEvictionPolicy<K> implements EvictionPolicy<K>{
      */
     @Override
     public synchronized  void onAccess(K key) {
-
+        if(!map.containsKey(key)){
+           throw new IllegalStateException("Missing Key is Accessed in Eviction Policy");
+        }
         Node<K> node = map.get(key);
         if(node==null){
             return;
