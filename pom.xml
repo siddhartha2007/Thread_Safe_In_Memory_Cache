@@ -30,7 +30,13 @@
             <version>5.11.0</version>
             <scope>test</scope>
         </dependency>
-
+<!--        awaitility-->
+        <dependency>
+            <groupId>org.awaitility</groupId>
+            <artifactId>awaitility</artifactId>
+            <version>4.2.1</version>
+            <scope>test</scope>
+        </dependency>
         <!-- AssertJ -->
         <dependency>
             <groupId>org.assertj</groupId>

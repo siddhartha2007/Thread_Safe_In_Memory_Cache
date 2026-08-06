@@ -85,9 +85,6 @@ public class LRUEvictionPolicy<K> implements EvictionPolicy<K>{
      */
     @Override
     public synchronized  void onAccess(K key) {
-        if(!map.containsKey(key)){
-           throw new IllegalStateException("Missing Key is Accessed in Eviction Policy");
-        }
         Node<K> node = map.get(key);
         if(node==null){
             return;

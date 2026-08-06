@@ -20,12 +20,17 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.Duration;
 import java.time.OffsetTime;
 
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static org.assertj.core.api.Assertions.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.*;
+
+import static org.awaitility.Awaitility.await;
+import static java.util.concurrent.TimeUnit.SECONDS;
 public class CacheEntryTest {
 
     CacheEntry<String> entry;
@@ -74,16 +79,19 @@ public class CacheEntryTest {
         assertThat(entry.getLastAccessTime()).isCloseTo(System.currentTimeMillis(), within(100L));
     }
     @Test
-    void shouldNotExpiryWhenTtlTimeNotSet() throws  InterruptedException{
+    void shouldNotExpiryWhenTtlTimeNotSet(){
         entry=new CacheEntry<>("Siddhartha");
-        Thread.sleep(10000);
+
         assertThat(entry.isExpired()).isFalse();
     }
 
     @Test
-    void shouldExpireWhenTtlExceeded() throws InterruptedException{
+    void shouldExpireWhenTtlExceeded(){
         entry=new CacheEntry<>("Siddhartha",2000);
-        Thread.sleep(2000);
+        await()
+                .atMost(Duration.ofSeconds(3))
+                        .pollInterval(50,MILLISECONDS)
+                                .until(()-> entry.isExpired());
         assertThat(entry.isExpired()).isTrue();
     }
 

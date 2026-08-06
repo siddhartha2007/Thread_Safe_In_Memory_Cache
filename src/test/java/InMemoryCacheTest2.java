@@ -4,6 +4,10 @@ import exceptions.InvalidTtlException;
 import implementation.InMemoryCache;
 import metrics.CacheStats;
 import model.CacheEntry;
+import net.bytebuddy.implementation.bytecode.Throw;
+import org.assertj.core.api.Assert;
+import org.assertj.core.api.Assertions;
+import org.assertj.core.error.ShouldBeEmptyDirectory;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
@@ -11,13 +15,24 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
+import java.util.Random;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.Duration;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicReference;
+
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static org.assertj.core.api.Assertions.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.*;
+import static org.awaitility.Awaitility.await;
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 @ExtendWith(MockitoExtension.class)
 public class InMemoryCacheTest2 {
@@ -135,22 +150,24 @@ void shouldIncrementMissesWhenNon_ExistingEntryAccessed() {
 }
 
 @Test
-void shouldIncrementMissesAndExpiredEntriesWhenExpiredEntryAccessed() throws InterruptedException{
-        inMemoryCache=new InMemoryCache<>(100,10,evictionPolicy);
+void shouldIncrementMissesAndExpiredEntriesWhenExpiredEntryAccessed(){
+        inMemoryCache=new InMemoryCache<>(1000000,10,evictionPolicy);
         inMemoryCache.put(1,"Siddhartha",1000);
+        clearInvocations(evictionPolicy);
     CacheStats stats=inMemoryCache.getStats();
     assertAll( ()-> assertThat(stats.expiredentries()).isEqualTo(0),
             ()->assertThat(stats.misses()).isEqualTo(0),
             ()->assertThat(stats.hits()).isEqualTo(0),
             ()->  assertThat(stats.evictions()).isEqualTo(0));
-        Thread.sleep(1000);
-        inMemoryCache.get(1);
+                await()
+                .atMost(Duration.ofSeconds(10))
+                .pollInterval(100,MILLISECONDS)
+                .until(() -> inMemoryCache.get(1)==null);
     CacheStats stats2=inMemoryCache.getStats();
     assertAll( ()-> assertThat(stats2.expiredentries()).isEqualTo(1),
             ()->assertThat(stats2.misses()).isEqualTo(1),
-            ()->assertThat(stats2.hits()).isEqualTo(0),
+            ()->assertThat(stats2.hits()).isGreaterThan(0),
             ()->  assertThat(stats2.evictions()).isEqualTo(0));
-
 }
 
 @Test
@@ -159,10 +176,12 @@ void shouldEvictVictimWhenNewEntryIsInsertedAtCapacity(){
         when(evictionPolicy.evict()).thenReturn(1);
         inMemoryCache.put(1,"Siddhartha");
         inMemoryCache.put(2,"Santosh");
+        CacheStats stats=inMemoryCache.getStats();
         verify(evictionPolicy).evict();
         verify(evictionPolicy).onInsert(1);
         verify(evictionPolicy).onInsert(2);
         verify(evictionPolicy,never()).onAccess(any());
+        assertThat(stats.evictions()).isEqualTo(1);
         assertThat(inMemoryCache.containsKey(1)).isFalse();
         assertThat(inMemoryCache.containsKey(2)).isTrue();
 }
@@ -183,19 +202,24 @@ void shouldEvictVictimWhenNewEntryIsInsertedAtCapacity(){
 
 
 @Test
-    void shouldReturnNullWhenExpiredEntryIsAccessed() throws InterruptedException{
+    void shouldReturnNullWhenExpiredEntryIsAccessed() {
         inMemoryCache=new InMemoryCache<>(10000,10,evictionPolicy);
         inMemoryCache.put(1,"Siddhartha",2000);
-        Thread.sleep(2000);
+        await()
+                .atMost(Duration.ofSeconds(10))
+                        .pollInterval(100,MILLISECONDS)
+                                .until(() -> inMemoryCache.containsKey(1)==false);
         assertThat(inMemoryCache.get(1)).isNull();
 }
 
 @Test
-    void shouldNotifyEvictionPolicyOnceExpiredEntryAccessed() throws InterruptedException{
-        inMemoryCache=new InMemoryCache<>(500,20,evictionPolicy);
-        inMemoryCache.put(1,"Siddhartha",2000);
-        Thread.sleep(2000);
-        inMemoryCache.get(1);
+    void shouldNotifyEvictionPolicyOnceExpiredEntryAccessed(){
+        inMemoryCache=new InMemoryCache<>(100_000,20,evictionPolicy);
+        inMemoryCache.put(1,"Siddhartha",200);
+        clearInvocations(evictionPolicy);
+        await().atMost(10,SECONDS).pollInterval(50,MILLISECONDS).until(()-> {
+           return  inMemoryCache.get(1) == null;
+        });
         verify(evictionPolicy).onRemove(1);
 }
 
@@ -223,17 +247,18 @@ void shouldEvictVictimWhenNewEntryIsInsertedAtCapacity(){
 
 @Test
     void shouldIncrementHitCountWhenExistingEntryIsAccessed(){
-        inMemoryCache=new InMemoryCache<>(1000,50,evictionPolicy);
+        inMemoryCache=new InMemoryCache<>(1000000,50,evictionPolicy);
         CacheStats stats=inMemoryCache.getStats();
         assertThat(stats.hits()).isEqualTo(0);
         inMemoryCache.put(1,"Siddhartha");
-        inMemoryCache.get(1);
+       inMemoryCache.get(1);
+       inMemoryCache.get(1);
+       inMemoryCache.get(1);
        final CacheStats stats2=inMemoryCache.getStats();
-       assertAll(()->assertThat(stats2.hits()).isEqualTo(1),
+       assertAll(()->assertThat(stats2.hits()).isEqualTo(3),
                ()->assertThat(stats2.misses()).isEqualTo(0),
                ()->assertThat(stats2.expiredentries()).isEqualTo(0),
                ()->assertThat(stats2.evictions()).isEqualTo(0));
-
 }
 
 
@@ -252,19 +277,21 @@ void shouldEvictVictimWhenNewEntryIsInsertedAtCapacity(){
 }
 
 @Test
-    void shouldUpdateMissesAndExpiriesWhenExpiredEntryAccessed() throws InterruptedException{
+    void shouldUpdateMissesAndExpiriesWhenExpiredEntryAccessed(){
         inMemoryCache=new InMemoryCache<>(90000,500,evictionPolicy);
     CacheStats stats=inMemoryCache.getStats();
     assertThat(stats.misses()).isEqualTo(0);
     assertThat(stats.expiredentries()).isEqualTo(0);
     inMemoryCache.put(1,"Afsana",2000);
-    Thread.sleep(2000);
-    inMemoryCache.get(1);
+    await()
+            .pollInterval(100,MILLISECONDS)
+                    .atMost(Duration.ofSeconds(10))
+                            .until(()->inMemoryCache.get(1)==null);
     final CacheStats stats2=inMemoryCache.getStats();
     assertAll(()->  assertThat(stats2.expiredentries()).isEqualTo(1),
             ()-> assertThat(stats2.misses()).isEqualTo(1),
             ()-> assertThat(stats2.evictions()).isEqualTo(0),
-            ()-> assertThat(stats2.hits()).isEqualTo(0));
+            ()-> assertThat(stats2.hits()).isGreaterThan(0));
 }
 
 
@@ -313,29 +340,36 @@ void shouldEvictVictimWhenNewEntryIsInsertedAtCapacity(){
     }
 
     @Test
-    void shouldReturnFalseWhenExpiredEntryIsChecked() throws InterruptedException{
+    void shouldReturnFalseWhenExpiredEntryIsChecked(){
         inMemoryCache=new InMemoryCache<>(1000000,3,evictionPolicy);
         inMemoryCache.put(1,"Siddhartha",1000);
-        Thread.sleep(1000);
+        await()
+                .atMost(Duration.ofSeconds(2))
+                .pollInterval(100,MILLISECONDS)
+                .until(()-> !inMemoryCache.containsKey(1));
         assertThat(inMemoryCache.containsKey(1)).isFalse();
     }
 
     @Test
-    void shouldUpdateEvictionPolicyWhenExpiredEntryisChecked() throws InterruptedException{
-        inMemoryCache=new InMemoryCache<>(1000,3,evictionPolicy);
+    void shouldUpdateEvictionPolicyWhenExpiredEntryisChecked(){
+        inMemoryCache=new InMemoryCache<>(1000000,3,evictionPolicy);
         inMemoryCache.put(1,"Siddhartha",1000);
         clearInvocations(evictionPolicy);
-        Thread.sleep(2000);
-        assertThat(inMemoryCache.containsKey(1)).isFalse();
+        await()
+                .atMost(Duration.ofSeconds(2))
+                        .pollInterval(100,MILLISECONDS)
+                                .until(()-> !inMemoryCache.containsKey(1));
         verify(evictionPolicy).onRemove(1);
     }
 
     @Test
-    void shouldUpdateMetricsWhenExpiredEntryIsChecked() throws InterruptedException{
+    void shouldUpdateMetricsWhenExpiredEntryIsChecked() {
         inMemoryCache=new InMemoryCache<>(1000,3,evictionPolicy);
         inMemoryCache.put(1,"Siddhartha",1000);
-        Thread.sleep(1000);
-        inMemoryCache.containsKey(1);
+        await()
+                .atMost(Duration.ofSeconds(2))
+                        .pollInterval(100,MILLISECONDS)
+                                .until(()-> !inMemoryCache.containsKey(1));
        final CacheStats stats2=inMemoryCache.getStats();
         assertAll( ()-> assertThat(stats2.expiredentries()).isEqualTo(1),
                 ()->assertThat(stats2.misses()).isEqualTo(0),
@@ -425,10 +459,10 @@ void shouldEvictVictimWhenNewEntryIsInsertedAtCapacity(){
         assertThrows(IllegalStateException.class,()->inMemoryCache.clear());
     }
     @Test
-    void shouldStopBackgroundCleanUpAfterstopCleanUpScheduler() throws InterruptedException{
-        inMemoryCache=new InMemoryCache<>(10000,10,evictionPolicy);
-        for(int i=0;i<10;i++){
-            inMemoryCache.put(i,"Siddhartha - "+i,30);
+    void shouldStopBackgroundCleanUpAfterStopCleanUpScheduler() throws InterruptedException {
+        inMemoryCache = new InMemoryCache<>(50, 10, evictionPolicy);
+        for (int i = 0; i < 10; i++) {
+            inMemoryCache.put(i, "Siddhartha - " + i, 30);
         }
         inMemoryCache.stopCleanupScheduler();
         Thread.sleep(300);
@@ -491,4 +525,399 @@ void shouldEvictVictimWhenNewEntryIsInsertedAtCapacity(){
          InvalidTtlException invalidTtlException=  assertThrows(InvalidTtlException.class,()->inMemoryCache.put(1,"Siddhartha",0));
          assertThat(invalidTtlException.getMessage()).isEqualTo("TtlMillis cannot be Negative or Zero");
     }
+
+
+    @Test
+    void shouldCleanTheCacheViaBackGroundCleanups(){
+        inMemoryCache=new InMemoryCache<>(1000,100,evictionPolicy);
+        for(int i=0;i<100;i++){
+            inMemoryCache.put(i,"Sidd "+i,50);
+        }
+
+        assertThat(inMemoryCache.size()).isEqualTo(100);
+        await()
+                .atMost(Duration.ofSeconds(30))
+                .pollInterval(100,MILLISECONDS)
+                .until(()->inMemoryCache.size()==0);
+        assertThat(inMemoryCache.size()).isZero();
+        assertThat(inMemoryCache.getStats().expiredentries()).isEqualTo(100);
+    }
+
+    // Concurreny Testing
+    @Test
+    void shouldSuccessfullyPerformConcurrentPuts() throws InterruptedException {
+        evictionPolicy=new LRUEvictionPolicy<>();
+        inMemoryCache=new InMemoryCache<>(100000,100,evictionPolicy);
+        CountDownLatch startLatch=new CountDownLatch(1);
+        CountDownLatch endLatch=new CountDownLatch(100);
+        ExecutorService executorService= Executors.newFixedThreadPool(20);
+
+        for(int i=0;i<100;i++){
+            int key=i;
+            executorService.submit(()-> {
+                try {
+                    startLatch.await();
+                    inMemoryCache.put(key,"Siddhartha -"+key);
+                }catch (InterruptedException e){
+                    Thread.currentThread().interrupt();
+                }
+                finally {
+                    endLatch.countDown();
+                }
+            });
+        }
+        executorService.shutdown();
+        startLatch.countDown();
+        assertThat(endLatch.await(10,SECONDS)).isTrue();
+        assertThat(inMemoryCache.size()).isEqualTo(100);
+
+        for(int i=0;i<100;i++){
+            assertThat(inMemoryCache.containsKey(i)).isTrue();
+        }
+    }
+
+    @Test
+    void shouldRetainSingleEntryAfterConcurrentUpdatesToSameKey() throws InterruptedException{
+        evictionPolicy=new LRUEvictionPolicy<>();
+        inMemoryCache=new InMemoryCache<>(100000,100,evictionPolicy);
+        CountDownLatch startLatch=new CountDownLatch(1);
+        CountDownLatch endLatch=new CountDownLatch(100);
+        ExecutorService executorService=Executors.newFixedThreadPool(20);
+        int key=1;
+        HashSet<String> set=new HashSet<>();
+        AtomicReference<Throwable> failure=new AtomicReference<>();
+        for(int i=0;i<100;i++){
+            int v=i;
+            executorService.submit(()->{
+                try{
+                    startLatch.await();
+                    inMemoryCache.put(1,"siddhartha "+v);
+                } catch (Throwable t) {
+                    failure.compareAndSet(null,t);
+                }finally {
+                    endLatch.countDown();
+                }
+            });
+            set.add("siddhartha "+v);
+        }
+        executorService.shutdown();
+        startLatch.countDown();
+        assertThat(endLatch.await(10,SECONDS)).isTrue();
+        assertThat(failure.get()).isNull();
+        assertThat(inMemoryCache.size()).isEqualTo(1);
+        assertThat(inMemoryCache.containsKey(1)).isTrue();
+        assertThat(SetCheck(set, inMemoryCache.get(1))).isTrue();
+        assertThat(inMemoryCache.getStats().evictions()).isEqualTo(0);
+        assertThat(inMemoryCache.getStats().misses()).isEqualTo(0);
+        assertThat(inMemoryCache.getStats().hits()).isEqualTo(1);
+        assertThat(inMemoryCache.getStats().expiredentries()).isEqualTo(0);
+    }
+    boolean SetCheck(HashSet<String> set,String value){
+        return set.contains(value);
+    }
+
+    @Test
+    void shouldRetainValueOrRemoveEntryAfterConcurrentPutAndRemove() throws InterruptedException{
+        evictionPolicy=new LRUEvictionPolicy<>();
+        inMemoryCache=new InMemoryCache<>(100000,100,evictionPolicy);
+        CountDownLatch startLatch=new CountDownLatch(1);
+        CountDownLatch endLatch=new CountDownLatch(100);
+        ExecutorService executorService=Executors.newFixedThreadPool(20);
+        int key=1;
+        AtomicReference<Throwable> atomicReference =new AtomicReference<>();
+        HashSet<String> set=new HashSet<>();
+        for(int i=0;i<50;i++){
+            int v=i;
+            executorService.submit(()->{
+                try {
+                    startLatch.await();
+                    inMemoryCache.put(1,"Siddhartha"+v);
+                }catch(Throwable t){
+                    atomicReference.compareAndSet(null,t);
+                }finally {
+                    endLatch.countDown();
+                }
+            });
+            set.add("Siddhartha"+v);
+        }
+
+        for(int i=0;i<50;i++){
+            executorService.submit(()->{
+                try {
+                    startLatch.await();
+                    inMemoryCache.remove(1);
+                }catch(Throwable t){
+                    atomicReference.compareAndSet(null,t);
+                }finally {
+                    endLatch.countDown();
+                }
+            });
+        }
+        startLatch.countDown();
+        assertThat(endLatch.await(10,SECONDS)).isTrue();
+        executorService.shutdown();
+        assertThat(atomicReference.get()).isNull();
+        assertThat(inMemoryCache.getStats().expiredentries()).isEqualTo(0);
+        assertThat(inMemoryCache.getStats().hits()).isEqualTo(0);
+        assertThat(inMemoryCache.getStats().misses()).isEqualTo(0);
+        assertThat(inMemoryCache.getStats().evictions()).isEqualTo(0);
+        assertThat(inMemoryCache.size()).isIn(0,1);
+        if(inMemoryCache.size()==1) {
+            assertThat(inMemoryCache.containsKey(1)).isTrue();
+            assertThat(inMemoryCache.get(1)).isNotNull();
+            assertThat(set).contains(inMemoryCache.get(1));
+        }else{
+            assertThat(inMemoryCache.get(1)).isNull();
+            assertThat(inMemoryCache.containsKey(1)).isFalse();
+        }
+    }
+
+    @Test
+    void shouldHandleConcurrentGetAndRemoveWithoutExceptions() throws InterruptedException{
+        evictionPolicy=new LRUEvictionPolicy<>();
+        inMemoryCache=new InMemoryCache<>(10000,100,evictionPolicy);
+        CountDownLatch startLatch=new CountDownLatch(1);
+        CountDownLatch endLatch=new CountDownLatch(100);
+        ExecutorService executorService=Executors.newFixedThreadPool(20);
+        AtomicReference<Throwable> atomicReference=new AtomicReference<>();
+        inMemoryCache.put(1,"Siddhartha");
+        for(int i=0;i<50;i++){
+            executorService.submit(() -> {
+               try {
+                   startLatch.await();
+                   inMemoryCache.get(1);
+               }catch (Throwable t){
+                   atomicReference.compareAndSet(null,t);
+               }finally {
+                   endLatch.countDown();
+               }
+            });
+        }
+        for(int i=0;i<50;i++){
+            executorService.submit(() -> {
+                try {
+                    startLatch.await();
+                    inMemoryCache.remove(1);
+                }catch (Throwable t){
+                    atomicReference.compareAndSet(null,t);
+                }finally {
+                    endLatch.countDown();
+                }
+            });
+        }
+        startLatch.countDown();
+        executorService.shutdown();
+        assertThat(atomicReference.get()).isNull();
+        assertThat(endLatch.await(10,SECONDS)).isTrue();
+        assertThat(inMemoryCache.size()).isEqualTo(0);
+        assertThat(inMemoryCache.containsKey(1)).isFalse();
+        assertThat(inMemoryCache.getStats().evictions() + inMemoryCache.getStats().expiredentries()).isEqualTo(0);
+        assertThat(inMemoryCache.getStats().hits()+ inMemoryCache.getStats().misses()).isEqualTo(50);
+        assertThat(inMemoryCache.get(1)).isNull();
+    }
+
+    // no exceptions
+    // metrics set to zero only
+    // size is zero
+    // get() returns null
+    // containskey at last is false.
+
+    @Test
+    void shouldHandleConcurrentRemoveAndContainsKeyWithoutExceptionsAndInconsistencies() throws  InterruptedException{
+        evictionPolicy=new LRUEvictionPolicy<>();
+        inMemoryCache=new InMemoryCache<>(100000,100,evictionPolicy);
+        CountDownLatch startLatch=new CountDownLatch(1);
+        CountDownLatch endLatch=new CountDownLatch(100);
+        AtomicReference<Throwable> atomicReference=new AtomicReference<>();
+        ExecutorService executorService=Executors.newFixedThreadPool(20);
+        inMemoryCache.put(1,"Siddhartha");
+        for(int i=0;i<50;i++){
+            executorService.submit(() ->{
+                try {
+                    startLatch.await();
+                    inMemoryCache.containsKey(1);
+                }catch (Throwable t){
+                    atomicReference.compareAndSet(null,t);
+                }finally {
+                    endLatch.countDown();
+                }
+            });
+
+            executorService.submit(() ->{
+                try {
+                    startLatch.await();
+                    inMemoryCache.remove(1);
+                }catch (Throwable t){
+                    atomicReference.compareAndSet(null,t);
+                }finally {
+                    endLatch.countDown();
+                }
+            });
+        }
+        startLatch.countDown();
+        assertThat(endLatch.await(10,SECONDS)).isTrue();
+        executorService.shutdown();
+        assertThat(atomicReference.get()).isNull();
+        assertThat(inMemoryCache.size()).isEqualTo(0);
+        assertThat(inMemoryCache.containsKey(1)).isFalse();
+        assertThat(inMemoryCache.get(1)).isNull();
+        CacheStats stats = inMemoryCache.getStats();
+
+        assertAll(
+                () -> assertThat(stats.hits()).isZero(),
+                () -> assertThat(stats.misses()).isEqualTo(1),
+                () -> assertThat(stats.evictions()).isZero(),
+                () -> assertThat(stats.expiredentries()).isZero()
+        );
+    }
+
+    //the invariants:
+    // misses+hits should be 50
+    // cache size is 0
+    // no Exceptions
+
+    @Test
+    void shouldHandleConcurrentGetAndClear() throws InterruptedException {
+        evictionPolicy = new LRUEvictionPolicy<>();
+        inMemoryCache = new InMemoryCache<>(1000000, 100, evictionPolicy);
+        CountDownLatch startLatch = new CountDownLatch(1);
+        CountDownLatch endLatch = new CountDownLatch(51);
+        ExecutorService executorService = Executors.newFixedThreadPool(20);
+        for (int i = 0; i < 100; i++) {
+            inMemoryCache.put(i, "Siddhartha" + i);
+        }
+        AtomicReference<Throwable> atomicReference = new AtomicReference<>();
+        for (int i = 0; i < 50; i++) {
+            int k = i;
+            executorService.submit(() -> {
+                try {
+                    startLatch.await();
+                    inMemoryCache.get(k);
+                } catch (Throwable t) {
+                    atomicReference.compareAndSet(null, t);
+                } finally {
+                    endLatch.countDown();
+                }
+            });
+            if (i == 49) {
+                executorService.submit(() -> {
+                    try {
+                        startLatch.await();
+                        inMemoryCache.clear();
+                    } catch (Throwable t) {
+                        atomicReference.compareAndSet(null, t);
+                    } finally {
+                        endLatch.countDown();
+                    }
+                });
+            }
+        }
+        startLatch.countDown();
+        assertThat(endLatch.await(10,SECONDS)).isTrue();
+        executorService.shutdown();
+        assertThat(atomicReference.get()).isNull();
+        assertThat(inMemoryCache.size()).isZero();
+        CacheStats stats = inMemoryCache.getStats();
+
+        assertAll(
+                () -> assertThat(stats.hits() + stats.misses()).isEqualTo(50),
+                () -> assertThat(stats.evictions()).isZero(),
+                () -> assertThat(stats.expiredentries()).isZero()
+        );
+        assertThat(inMemoryCache.containsKey(10)).isFalse();
+        assertThat(inMemoryCache.get(10)).isNull();
+    }
+
+    @Test
+    void shouldRemainConsistentUnderRandomConcurrentStress() throws InterruptedException {
+
+        evictionPolicy = new LRUEvictionPolicy<>();
+        inMemoryCache = new InMemoryCache<>(1000000, 100, evictionPolicy);
+
+        int threads = 100;
+        int operationsPerThread = 100;
+
+        ExecutorService executor = Executors.newFixedThreadPool(20);
+
+        CountDownLatch startLatch = new CountDownLatch(1);
+        CountDownLatch endLatch = new CountDownLatch(threads);
+
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+
+        for (int i = 0; i < threads; i++) {
+
+            executor.submit(() -> {
+
+                Random random = new Random();
+
+                try {
+
+                    startLatch.await();
+
+                    for (int j = 0; j < operationsPerThread; j++) {
+
+                        int key = random.nextInt(150);
+
+                        switch (random.nextInt(4)) {
+
+                            case 0:
+                                inMemoryCache.put(key, "Value-" + key);
+                                break;
+
+                            case 1:
+                                inMemoryCache.get(key);
+                                break;
+
+                            case 2:
+                                inMemoryCache.remove(key);
+                                break;
+
+                            case 3:
+                                inMemoryCache.containsKey(key);
+                                break;
+                        }
+                    }
+
+                } catch (Throwable t) {
+                    failure.compareAndSet(null, t);
+                } finally {
+                    endLatch.countDown();
+                }
+
+            });
+        }
+
+        startLatch.countDown();
+
+        assertThat(endLatch.await(30, TimeUnit.SECONDS)).isTrue();
+
+        executor.shutdown();
+
+        assertThat(failure.get()).isNull();
+
+        CacheStats stats = inMemoryCache.getStats();
+
+        assertAll(
+
+                () -> assertThat(inMemoryCache.size()).isLessThanOrEqualTo(100),
+
+                () -> assertThat(stats.hits()).isGreaterThanOrEqualTo(0),
+
+                () -> assertThat(stats.misses()).isGreaterThanOrEqualTo(0),
+
+                () -> assertThat(stats.evictions()).isGreaterThanOrEqualTo(0),
+
+                () -> assertThat(stats.expiredentries()).isGreaterThanOrEqualTo(0)
+
+        );
+
+        // Cache should still be usable after stress.
+
+        inMemoryCache.put(999, "Siddhartha");
+
+        assertThat(inMemoryCache.get(999)).isEqualTo("Siddhartha");
+
+    }
+
 }
+

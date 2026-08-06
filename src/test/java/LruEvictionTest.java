@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.junit.jupiter.api.Assertions.*;
+
 public class LruEvictionTest {
 
     LRUEvictionPolicy<Integer> evictionPolicy;
@@ -26,11 +27,7 @@ public class LruEvictionTest {
         assertThat(illegalStateException.getMessage()).isEqualTo("Duplicate key inserted into eviction policy.");
     }
     // test behaviour when multiple keys inserted.
-    @Test
-    void shouldThrowIllegalStateExceptionWhenMissingKeyIsAccessed(){
-        IllegalStateException illegalStateException=assertThrows(IllegalStateException.class,()-> evictionPolicy.onAccess(1));
-        assertThat(illegalStateException.getMessage()).isEqualTo("Missing Key is Accessed in Eviction Policy");
-    }
+
     @Test
     void shouldMakeLeastAccessedGetEvictedWhenMultipleNodesPresent(){
         evictionPolicy.onInsert(1); // head.
@@ -55,8 +52,7 @@ public class LruEvictionTest {
     void shouldRemoveNodeFromEvictionPolicyWhenCalledOnRemoveOnIt(){
         evictionPolicy.onInsert(1);
         evictionPolicy.onRemove(1);
-        IllegalStateException illegalStateException=assertThrows(IllegalStateException.class,()-> evictionPolicy.onAccess(1));
-        assertThat(illegalStateException.getMessage()).isEqualTo("Missing Key is Accessed in Eviction Policy");
+        assertThat(evictionPolicy.evict()).isNull();
     }
 
     @Test
@@ -65,15 +61,12 @@ public class LruEvictionTest {
         evictionPolicy.onInsert(2);
         evictionPolicy.onInsert(3);
         evictionPolicy.onRemove(1);
-        IllegalStateException illegalStateException=assertThrows(IllegalStateException.class,()-> evictionPolicy.onAccess(1));
-        assertThat(illegalStateException.getMessage()).isEqualTo("Missing Key is Accessed in Eviction Policy");
-
         assertThat(evictionPolicy.evict()).isEqualTo(2);
         assertThat(evictionPolicy.evict()).isEqualTo(3);
     }
 
     @Test
-    void shouldRemoveOnlyTheLeastRecentlyUsed(){
+    void shouldEvictOnlyTheLeastRecentlyUsed(){
         evictionPolicy.onInsert(1);
         evictionPolicy.onInsert(2);
         evictionPolicy.onInsert(3);
@@ -88,8 +81,6 @@ public class LruEvictionTest {
         evictionPolicy.onInsert(2);
         evictionPolicy.onInsert(3);
         evictionPolicy.onRemove(2);
-        IllegalStateException illegalStateException=assertThrows(IllegalStateException.class,()-> evictionPolicy.onAccess(2));
-        assertThat(illegalStateException.getMessage()).isEqualTo("Missing Key is Accessed in Eviction Policy");
 
         assertThat(evictionPolicy.evict()).isEqualTo(1);
         assertThat(evictionPolicy.evict()).isEqualTo(3);
@@ -101,8 +92,7 @@ public class LruEvictionTest {
         evictionPolicy.onInsert(2);
         evictionPolicy.onInsert(3);
         evictionPolicy.onRemove(3);
-        IllegalStateException illegalStateException=assertThrows(IllegalStateException.class,()-> evictionPolicy.onAccess(3));
-        assertThat(illegalStateException.getMessage()).isEqualTo("Missing Key is Accessed in Eviction Policy");
+
         assertThat(evictionPolicy.evict()).isEqualTo(1);
         assertThat(evictionPolicy.evict()).isEqualTo(2);
     }
@@ -127,11 +117,6 @@ public class LruEvictionTest {
         evictionPolicy.onInsert(1);
         evictionPolicy.onInsert(2);
         evictionPolicy.clear();
-        IllegalStateException illegalStateException = assertThrows(IllegalStateException.class, () -> evictionPolicy.onAccess(1));
-        assertThat(illegalStateException.getMessage()).isEqualTo("Missing Key is Accessed in Eviction Policy");
-        illegalStateException = assertThrows(IllegalStateException.class, () -> evictionPolicy.onAccess(2));
-        assertThat(illegalStateException.getMessage()).isEqualTo("Missing Key is Accessed in Eviction Policy");
-
         assertThat(evictionPolicy.evict()).isEqualTo(null);
     }
 
