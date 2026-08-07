@@ -1,5 +1,6 @@
 package implementation;
 
+import scheduler.CleanUpScheduler;
 import cache.Cache;
 import eviction.EvictionPolicy;
 import metrics.CacheMetrics;
@@ -7,10 +8,7 @@ import metrics.CacheStats;
 import model.CacheEntry;
 
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -36,7 +34,7 @@ import java.util.concurrent.locks.ReentrantLock;
 public class InMemoryCache<K,V> implements Cache<K,V> {
     private final Map<K, CacheEntry<V>> cache;
     private final CacheMetrics metrics;
-    private final ScheduledExecutorService scheduler;
+    private final ScheduledFuture<?> cleanupFuture;
     private final long cleanupIntervalMillis;
     private final int capacity;
     private final EvictionPolicy<K> evictionPolicy;
@@ -45,6 +43,8 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
 
     private static final long DEFAULT_CLEANUP_INTERVAL=20_000;
     private static final int DEFAULT_CAPACITY=100;
+
+
     public InMemoryCache(EvictionPolicy<K> evictionPolicy){
         this(DEFAULT_CLEANUP_INTERVAL,DEFAULT_CAPACITY,evictionPolicy);
     }
@@ -59,15 +59,21 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
     }
 
     /**
-     * Creates a new in-memory cache.
+     * Creates a new thread-safe in-memory cache.
      *
-     * @param cleanupIntervalMillis interval between background cleanup runs
-     *                              in milliseconds
+     * <p>Each cache instance maintains its own storage, metrics, and
+     * eviction policy while sharing a common background cleanup scheduler
+     * with other cache instances. A periodic cleanup task is automatically
+     * registered with the shared scheduler to remove expired entries.
+     *
+     * @param cleanupIntervalMillis interval, in milliseconds, between
+     *                              successive background cleanup executions
      * @param capacity maximum number of entries the cache can hold
      * @param evictionPolicy eviction strategy used when the cache reaches
      *                       its capacity
-     * @throws IllegalArgumentException if capacity or cleanup interval is
-     *                                  non-positive
+     * @throws IllegalArgumentException if the eviction policy is {@code null},
+     *                                  the cleanup interval is non-positive,
+     *                                  or the capacity is non-positive
      */
     public InMemoryCache(long cleanupIntervalMillis, int capacity,EvictionPolicy<K> evictionPolicy){
         if(evictionPolicy==null){
@@ -82,14 +88,13 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
         }
         cache =new ConcurrentHashMap<>();
         metrics=new CacheMetrics();
-        scheduler = Executors.newSingleThreadScheduledExecutor();
         this.cleanupIntervalMillis=cleanupIntervalMillis;
         this.capacity=capacity;
         this.evictionPolicy=evictionPolicy;
-        Runnable cleanUpTask=() ->{
+        Runnable task= ()->{
             removeExpiredEntries();
         };
-        scheduler.scheduleWithFixedDelay(cleanUpTask,cleanupIntervalMillis, cleanupIntervalMillis, TimeUnit.MILLISECONDS);
+        cleanupFuture= CleanUpScheduler.getInstance().scheduleForCleanUp(task,cleanupIntervalMillis);
     }
 
     /**
@@ -155,7 +160,7 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
         CacheEntry<V> entry= cache.get(key);
         if(entry==null){
             metrics.incrementMisses();
-            return null;// returning null is industry standard
+            return null;
         }
         if(entry.isExpired()){
             removeExpiredEntry(key,entry);
@@ -244,23 +249,31 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
     }
 
     /**
-     * Gracefully shuts down the background cleanup task.
+     * Stops the background cleanup task associated with this cache.
      *
-     * <p>After shutdown, no further cleanup tasks are scheduled.
-     * Existing cache entries remain accessible.
+     * <p>Only this cache's scheduled cleanup task is cancelled. Other
+     * cache instances sharing the same scheduler continue executing their
+     * cleanup tasks normally.
+     *
+     * <p>If a cleanup task is already executing, it is allowed to complete,
+     * but no subsequent executions are scheduled.
      */
     public void stopCleanupScheduler(){
-        scheduler.shutdown();
-        try{
-            if(!scheduler.awaitTermination(10,TimeUnit.SECONDS)){
-                scheduler.shutdownNow();
-            }
-        }catch (InterruptedException e){
-            scheduler.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
+        cleanupFuture.cancel(false);
     }
 
+    /**
+     * Shuts down this cache instance.
+     *
+     * <p>After shutdown, all cache operations throw an
+     * {@link IllegalStateException}. The background cleanup task associated
+     * with this cache is cancelled, while the shared cleanup scheduler
+     * remains available for other cache instances.
+     *
+     * <p>This method does not shut down the shared scheduler.
+     * To terminate the shared scheduler, invoke
+     *{@link CleanUpScheduler#shutdown()}
+     */
     public void shutdown(){
         shutdown.set(true);
         stopCleanupScheduler();
@@ -281,10 +294,26 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
         }
     }
 
+    /**
+     * Returns whether this cache has been shut down.
+     *
+     * @return {@code true} if this cache has been shut down;
+     *         {@code false} otherwise
+     */
     public boolean isShutDown(){
         return shutdown.get();
     }
 
+    /**
+     * Returns a snapshot of the current cache statistics.
+     *
+     * <p>The returned {@link CacheStats} is immutable and represents the
+     * values of the cache metrics at the time this method is invoked.
+     * Subsequent cache operations do not modify the returned object.
+     *
+     * @return a snapshot containing cache hits, misses, evictions,
+     *         and expired entry removals
+     */
     public CacheStats getStats(){
         return new CacheStats(metrics.getCacheHits(),metrics.getCacheMisses(),metrics.getCacheEvictions(),metrics.getExpiredEntries());
     }

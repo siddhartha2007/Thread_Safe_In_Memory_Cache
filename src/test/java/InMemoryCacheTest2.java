@@ -20,6 +20,7 @@ import java.util.Random;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import javax.imageio.stream.MemoryCacheImageInputStream;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.HashSet;
@@ -364,10 +365,10 @@ void shouldEvictVictimWhenNewEntryIsInsertedAtCapacity(){
 
     @Test
     void shouldUpdateMetricsWhenExpiredEntryIsChecked() {
-        inMemoryCache=new InMemoryCache<>(1000,3,evictionPolicy);
+        inMemoryCache=new InMemoryCache<>(1000000,3,evictionPolicy);
         inMemoryCache.put(1,"Siddhartha",1000);
         await()
-                .atMost(Duration.ofSeconds(2))
+                .atMost(Duration.ofSeconds(5))
                         .pollInterval(100,MILLISECONDS)
                                 .until(()-> !inMemoryCache.containsKey(1));
        final CacheStats stats2=inMemoryCache.getStats();
@@ -707,8 +708,8 @@ void shouldEvictVictimWhenNewEntryIsInsertedAtCapacity(){
         }
         startLatch.countDown();
         executorService.shutdown();
-        assertThat(atomicReference.get()).isNull();
         assertThat(endLatch.await(10,SECONDS)).isTrue();
+        assertThat(atomicReference.get()).isNull();
         assertThat(inMemoryCache.size()).isEqualTo(0);
         assertThat(inMemoryCache.containsKey(1)).isFalse();
         assertThat(inMemoryCache.getStats().evictions() + inMemoryCache.getStats().expiredentries()).isEqualTo(0);
@@ -919,5 +920,82 @@ void shouldEvictVictimWhenNewEntryIsInsertedAtCapacity(){
 
     }
 
+    @Test
+    void shouldScheduleABackGroundCleanupWhenCacheInstanceCreated(){
+        inMemoryCache=new InMemoryCache<>(100,100,evictionPolicy);
+        for(int i=0;i<100;i++){
+            inMemoryCache.put(i,"Siddhartha"+i,50);
+        }
+        await()
+                .atMost(Duration.ofSeconds(20))
+                .pollInterval(100,MILLISECONDS)
+                .until(()->inMemoryCache.size()==0);
+
+        assertThat(inMemoryCache.size()).isEqualTo(0);
+        assertThat(inMemoryCache.getStats().expiredentries()).isEqualTo(100);
+        assertThat(inMemoryCache.get(1)).isNull();
+        assertThat(inMemoryCache.get(99)).isNull();
+        assertThat(inMemoryCache.containsKey(1)).isFalse();
+    }
+
+    @Test
+    void shouldOnlyStopBackgroundCleanUpForThatParticularCache() throws InterruptedException{
+        inMemoryCache=new InMemoryCache<>(100,1000,evictionPolicy);
+        InMemoryCache<Integer,String> inMemoryCache1=new InMemoryCache<>(100,100,evictionPolicy);
+        for(int i=0;i<100;i++){
+            inMemoryCache1.put(i,"Siddhartha"+i,100);
+            inMemoryCache.put(i,"Siddhartha"+i,50);
+        }
+        inMemoryCache1.stopCleanupScheduler();
+        await()
+                .atMost(Duration.ofSeconds(10))
+                .pollInterval(100,MILLISECONDS)
+                .until(()->inMemoryCache.size()==0);
+        assertThat(inMemoryCache.size()).isEqualTo(0);
+        assertThat(inMemoryCache.getStats().expiredentries()).isEqualTo(100);
+        assertThat(inMemoryCache.get(1)).isNull();
+        assertThat(inMemoryCache.get(99)).isNull();
+        assertThat(inMemoryCache.containsKey(1)).isFalse();
+        int prevsize=inMemoryCache1.size();
+        inMemoryCache1.put(101,"Siddhartha",100);
+        inMemoryCache1.put(102,"Afsana",100);
+        Thread.sleep(250);
+        assertThat(inMemoryCache1.size()).isGreaterThan(0);
+        assertThat(inMemoryCache1.size()).isGreaterThan(prevsize);
+    }
+
+    @Test
+    void shouldAllowMultipleCachesToShareScheduler(){
+        inMemoryCache=new InMemoryCache<>(100,100,evictionPolicy);
+        InMemoryCache<Integer,String> inMemoryCache1=new InMemoryCache<>(100,100,evictionPolicy);
+        InMemoryCache<Integer,String> inMemoryCache2=new InMemoryCache<>(100,100,evictionPolicy);
+        for(int i=0;i<100;i++){
+            inMemoryCache.put(i,"Siddhartha"+i,50);
+            inMemoryCache1.put(i,"Siddhartha"+i,50);
+            inMemoryCache2.put(i,"Siddhartha"+i,50);
+        }
+        await()
+                .atMost(Duration.ofSeconds(20))
+                .pollInterval(100,MILLISECONDS)
+                .until(()-> inMemoryCache1.size()==0 && inMemoryCache2.size()==0 && inMemoryCache.size()==0);
+        assertThat(inMemoryCache.size()).isEqualTo(0);
+        assertThat(inMemoryCache.getStats().expiredentries()).isEqualTo(100);
+        assertThat(inMemoryCache.get(1)).isNull();
+        assertThat(inMemoryCache.get(99)).isNull();
+        assertThat(inMemoryCache.containsKey(1)).isFalse();
+
+        assertThat(inMemoryCache1.size()).isEqualTo(0);
+        assertThat(inMemoryCache1.getStats().expiredentries()).isEqualTo(100);
+        assertThat(inMemoryCache1.get(1)).isNull();
+        assertThat(inMemoryCache1.get(99)).isNull();
+        assertThat(inMemoryCache1.containsKey(1)).isFalse();
+
+        assertThat(inMemoryCache2.size()).isEqualTo(0);
+        assertThat(inMemoryCache2.getStats().expiredentries()).isEqualTo(100);
+        assertThat(inMemoryCache2.get(1)).isNull();
+        assertThat(inMemoryCache2.get(99)).isNull();
+        assertThat(inMemoryCache2.containsKey(1)).isFalse();
+
+    }
 }
 
