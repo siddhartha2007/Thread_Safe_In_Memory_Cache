@@ -58,6 +58,10 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
         this(DEFAULT_CLEANUP_INTERVAL,capacity,evictionPolicy);
     }
 
+    private InMemoryCache(InMemoryCacheBuilder builder){
+            this(builder.cleanUpIntervalMillis,builder.capacity,builder.evictionPolicy);
+    }
+
     /**
      * Creates a new thread-safe in-memory cache.
      *
@@ -321,6 +325,112 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
     private void ensureOpen(){
         if(shutdown.get()){
             throw  new IllegalStateException("Cache has been shut down.");
+        }
+    }
+
+
+
+    /**
+     * A builder for constructing {@link InMemoryCache} instances.
+     *
+     * <p>This builder provides a flexible way to configure cache instances
+     * without requiring multiple overloaded constructors. Optional
+     * configuration values that are not explicitly specified are assigned
+     * sensible default values during {@link #build()}.
+     *
+     * <p>Default configuration:
+     * <ul>
+     *     <li>Capacity: {@value InMemoryCache#DEFAULT_CAPACITY}</li>
+     *     <li>Cleanup Interval: {@value InMemoryCache#DEFAULT_CLEANUP_INTERVAL} milliseconds</li>
+     * </ul>
+     *
+     * <p>An {@link EvictionPolicy} must be provided before invoking
+     * {@link #build()}.
+     *
+     * @param <K> the type of cache keys
+     * @param <V> the type of cached values
+     */
+    public static class InMemoryCacheBuilder<K,V>{
+        private EvictionPolicy<K> evictionPolicy;
+        private Long cleanUpIntervalMillis;
+        private Integer capacity;
+
+        /**
+         * Creates a new builder for constructing {@link InMemoryCache}
+         * instances.
+         *
+         * @param <K> the type of cache keys
+         * @param <V> the type of cached values
+         * @return a new {@code InMemoryCacheBuilder}
+         */
+        public static <K,V> InMemoryCacheBuilder<K,V> builder() {
+            return new InMemoryCacheBuilder<>();
+        }
+
+        /**
+         * Sets the eviction policy used by the cache.
+         *
+         * @param evictionPolicy the eviction policy to use
+         * @return this builder instance
+         */
+        public InMemoryCacheBuilder<K,V> evictionPolicy(EvictionPolicy<K> evictionPolicy){
+            this.evictionPolicy=evictionPolicy;
+            return this;
+        }
+
+        /**
+         * Sets the maximum number of entries the cache can hold.
+         *
+         * <p>If this method is not invoked, the default capacity is used.
+         *
+         * @param capacity the maximum cache capacity
+         * @return this builder instance
+         */
+        public InMemoryCacheBuilder<K,V> capacity(int capacity){
+            this.capacity=capacity;
+            return this;
+        }
+
+        /**
+         * Sets the interval between successive background cleanup executions.
+         *
+         * <p>If this method is not invoked, the default cleanup interval is
+         * used.
+         *
+         * @param cleanUpIntervalMillis cleanup interval in milliseconds
+         * @return this builder instance
+         */
+        public InMemoryCacheBuilder<K,V> cleanUpIntervalMillis(Long cleanUpIntervalMillis) {
+            this.cleanUpIntervalMillis = cleanUpIntervalMillis;
+            return this;
+        }
+
+        /**
+         * Builds and returns a new {@link InMemoryCache} instance.
+         *
+         * <p>Any optional configuration values that were not explicitly set are
+         * replaced with their default values.
+         *
+         * <p>An {@link IllegalStateException} is thrown if no eviction policy
+         * has been provided.
+         *
+         * @return a newly constructed {@code InMemoryCache}
+         * @throws IllegalStateException if an eviction policy has not been
+         *                               configured
+         */
+        public InMemoryCache<K,V> build(){
+            if(this.cleanUpIntervalMillis==null){
+                cleanUpIntervalMillis=DEFAULT_CLEANUP_INTERVAL;
+            }
+            if(this.capacity==null){
+                capacity=DEFAULT_CAPACITY;
+            }
+            if(evictionPolicy == null) {
+                throw new IllegalStateException(
+                        "Eviction Policy must be specified."
+                );
+            }
+            return new InMemoryCache<>(this);
         }
     }
 }
