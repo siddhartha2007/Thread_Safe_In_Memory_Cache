@@ -997,5 +997,18 @@ void shouldEvictVictimWhenNewEntryIsInsertedAtCapacity(){
         assertThat(inMemoryCache2.containsKey(1)).isFalse();
 
     }
+
+    @Test
+    void shouldNotEvictWhenInsertingExactlyAtCapacity() {
+        InMemoryCache<Integer, String> inMemoryCache =
+                new InMemoryCache<>(100_000L, 3, new LRUEvictionPolicy<>());
+
+        inMemoryCache.put(1, "a");
+        inMemoryCache.put(2, "b");
+        inMemoryCache.put(3, "c"); // fills exactly to capacity — should NOT evict
+
+        assertThat(inMemoryCache.size()).isEqualTo(3);
+        assertThat(inMemoryCache.containsKey(1)).isTrue(); // must still be present, not prematurely evicted
+    }
 }
 

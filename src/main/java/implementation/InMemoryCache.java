@@ -110,7 +110,7 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
         cacheLock.lock();
         try {
             CacheEntry<V> existing = cache.get(key);
-            cache.put(key, new CacheEntry<>(value));
+            CacheEntry<V> newEntry=new CacheEntry<>(value);
             if (existing != null) {
                 evictionPolicy.onAccess(key);
             } else {
@@ -123,6 +123,7 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
                 }
                 evictionPolicy.onInsert(key);
             }
+            cache.put(key,newEntry);
         } finally {
             cacheLock.unlock();
         }
@@ -137,7 +138,7 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
         try {
 
             CacheEntry<V> existing = cache.get(key);
-            cache.put(key, new CacheEntry<>(value,ttlMillis));
+            CacheEntry<V> newEntry=new CacheEntry<>(value,ttlMillis);
             if(existing!=null){
                 evictionPolicy.onAccess(key);
             }else {
@@ -150,7 +151,7 @@ public class InMemoryCache<K,V> implements Cache<K,V> {
                 }
                 evictionPolicy.onInsert(key);
             }
-
+            cache.put(key,newEntry);
         } finally {
             cacheLock.unlock();
         }
