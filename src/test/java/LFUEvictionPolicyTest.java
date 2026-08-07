@@ -129,5 +129,20 @@ public class LFUEvictionPolicyTest {
         assertThat(evictionPolicy.evict()).isNull();
     }
 
+    @Test
+    void shouldEvictLeastRecentlyUsedWhenFrequencyIsSame() {
+
+        evictionPolicy.onInsert(1);
+        evictionPolicy.onInsert(2);
+        evictionPolicy.onInsert(3);
+
+        evictionPolicy.onAccess(1);
+        evictionPolicy.onAccess(2);
+        evictionPolicy.onAccess(3);
+
+        // all have frequency = 2
+
+        assertThat(evictionPolicy.evict()).isEqualTo(1);
+    }
 
 }
