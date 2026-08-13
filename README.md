@@ -16,7 +16,7 @@ cache library.
 
 Caching is a fundamental technique in backend systems for improving responsiveness by avoiding repeated access to expensive resources such as databases, file systems, or external services.
 
-Instead of relying on an existing caching library, I built this project from scratch to better understand the data structures, concurrency mechanisms, and architectural decisions involved in designing a thread-safe in-memory cache.## Why This Project?
+Instead of relying on an existing caching library, I built this project from scratch to better understand the data structures, concurrency mechanisms, and architectural decisions involved in designing a thread-safe in-memory cache.
 
 This project was built to understand how an in-memory cache can be
 designed and implemented from the ground up rather than relying on an
